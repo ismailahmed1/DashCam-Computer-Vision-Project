@@ -1,0 +1,22 @@
+# Virtual environment
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# YOLO model weights (auto-downloaded at runtime)
+*.pt
+
+# Video files
+*.mp4
+*.mov
+*.avi
+*.mkv
+
+# macOS
+.DS_Store
+
+# Environment variables
+.env
