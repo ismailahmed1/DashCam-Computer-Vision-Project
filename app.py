@@ -117,8 +117,11 @@ status_slot   = st.empty()
 cap = cv2.VideoCapture(src_path)
 scores: list[float]     = []
 timestamps: list[float] = []
-frame_idx = 0
-processed = 0
+events: list[dict]      = []
+frame_idx  = 0
+processed  = 0
+prev_label = "LOW"
+_LEVEL_RANK = {"LOW": 0, "CAUTION": 1, "HIGH": 2, "CRITICAL": 3}
 
 while True:
     ret, frame = cap.read()
@@ -132,6 +135,21 @@ while True:
     detections = detector.detect(frame)
     score      = scorer.score(detections, width, height)
     label, color = scorer.get_level(score)
+
+    # Record escalation events (LOW→CAUTION, CAUTION→HIGH, etc.)
+    if _LEVEL_RANK[label] > _LEVEL_RANK[prev_label]:
+        _priority = {"person": 0, "bicycle": 1, "motorcycle": 1, "truck": 2, "bus": 2, "car": 3}
+        obj_names = ", ".join(sorted(
+            {d["class_name"] for d in detections},
+            key=lambda n: _priority.get(n, 4),
+        )) or "—"
+        events.append({
+            "Time": f"{frame_idx / fps:.1f}s",
+            "Level": label,
+            "Score": int(score),
+            "Triggered by": obj_names,
+        })
+    prev_label = label
 
     annotate_frame(frame, detections, score, label, color)
     writer.write(frame)
@@ -220,6 +238,33 @@ fig.update_layout(
 )
 
 st.plotly_chart(fig, use_container_width=True)
+
+# ── Dangerous moments table ───────────────────────────────────────────────────
+_LEVEL_HEX = {"CRITICAL": "#FF2020", "HIGH": "#FF7800", "CAUTION": "#FFD700"}
+
+st.subheader("Dangerous Moments")
+if events:
+    rows_html = "".join(
+        f'<tr style="border-bottom:1px solid #2a2a2a">'
+        f'<td style="padding:7px 12px">{e["Time"]}</td>'
+        f'<td style="padding:7px 12px"><span style="color:{_LEVEL_HEX[e["Level"]]};font-weight:700">{e["Level"]}</span></td>'
+        f'<td style="padding:7px 12px">{e["Score"]} / 100</td>'
+        f'<td style="padding:7px 12px">{e["Triggered by"]}</td>'
+        f'</tr>'
+        for e in events
+    )
+    st.markdown(
+        f'<table style="width:100%;border-collapse:collapse;font-size:0.9rem">'
+        f'<thead><tr style="border-bottom:2px solid #444;color:#888;font-size:0.78rem;text-transform:uppercase">'
+        f'<th style="text-align:left;padding:6px 12px">Timestamp</th>'
+        f'<th style="text-align:left;padding:6px 12px">Level</th>'
+        f'<th style="text-align:left;padding:6px 12px">Score</th>'
+        f'<th style="text-align:left;padding:6px 12px">Triggered by</th>'
+        f'</tr></thead><tbody>{rows_html}</tbody></table>',
+        unsafe_allow_html=True,
+    )
+else:
+    st.info("No threshold escalations detected — danger stayed at LOW throughout.")
 
 # ── Playback ──────────────────────────────────────────────────────────────────
 with open(out_path, "rb") as f:
