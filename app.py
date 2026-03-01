@@ -106,7 +106,7 @@ detector = DashcamDetector(model_size=model_key, conf=conf_thresh)
 scorer   = DangerScorer(smoothing_window=6)
 
 out_path = src_path.replace(".mp4", "_analyzed.mp4")
-fourcc   = cv2.VideoWriter_fourcc(*"avc1")
+fourcc   = cv2.VideoWriter_fourcc(*"avc1")  # H.264 — required for browser playback
 out_fps  = max(fps / skip_n, 1.0)
 writer   = cv2.VideoWriter(out_path, fourcc, out_fps, (width, height))
 
@@ -267,6 +267,7 @@ else:
     st.info("No threshold escalations detected — danger stayed at LOW throughout.")
 
 # ── Playback ──────────────────────────────────────────────────────────────────
+st.subheader("Analyzed Video")
 with open(out_path, "rb") as f:
     st.video(f.read())
 
