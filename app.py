@@ -106,7 +106,7 @@ detector = DashcamDetector(model_size=model_key, conf=conf_thresh)
 scorer   = DangerScorer(smoothing_window=6)
 
 out_path = src_path.replace(".mp4", "_analyzed.mp4")
-fourcc   = cv2.VideoWriter_fourcc(*"mp4v")
+fourcc   = cv2.VideoWriter_fourcc(*"avc1")
 out_fps  = max(fps / skip_n, 1.0)
 writer   = cv2.VideoWriter(out_path, fourcc, out_fps, (width, height))
 
@@ -220,6 +220,10 @@ fig.update_layout(
 )
 
 st.plotly_chart(fig, use_container_width=True)
+
+# ── Playback ──────────────────────────────────────────────────────────────────
+with open(out_path, "rb") as f:
+    st.video(f.read())
 
 # ── Download ──────────────────────────────────────────────────────────────────
 with open(out_path, "rb") as f:
