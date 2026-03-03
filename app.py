@@ -118,15 +118,22 @@ cap = cv2.VideoCapture(src_path)
 scores: list[float]     = []
 timestamps: list[float] = []
 events: list[dict]      = []
-frame_idx  = 0
-processed  = 0
-prev_label = "LOW"
+frame_idx   = 0
+processed   = 0
+prev_label  = "LOW"
+first_frame = None
+heatmap_acc = np.zeros((height, width), dtype=np.float32)
 _LEVEL_RANK = {"LOW": 0, "CAUTION": 1, "HIGH": 2, "CRITICAL": 3}
+_HM_WEIGHTS = {"person": 2.5, "bicycle": 1.8, "motorcycle": 1.8,
+               "car": 1.0, "bus": 1.2, "truck": 1.3}
 
 while True:
     ret, frame = cap.read()
     if not ret:
         break
+
+    if first_frame is None:
+        first_frame = frame.copy()
 
     if frame_idx % skip_n != 0:
         frame_idx += 1
@@ -135,6 +142,11 @@ while True:
     detections = detector.detect(frame)
     score      = scorer.score(detections, width, height)
     label, color = scorer.get_level(score)
+
+    # Accumulate detections into heatmap (weighted by class danger)
+    for det in detections:
+        x1, y1, x2, y2 = det["box"]
+        heatmap_acc[y1:y2, x1:x2] += _HM_WEIGHTS.get(det["class_name"], 1.0)
 
     # Record escalation events (LOW→CAUTION, CAUTION→HIGH, etc.)
     if _LEVEL_RANK[label] > _LEVEL_RANK[prev_label]:
@@ -265,6 +277,18 @@ if events:
     )
 else:
     st.info("No threshold escalations detected — danger stayed at LOW throughout.")
+
+# ── Detection heatmap ────────────────────────────────────────────────────────
+st.subheader("Detection Heatmap")
+if first_frame is not None and heatmap_acc.max() > 0:
+    blurred    = cv2.GaussianBlur(heatmap_acc, (0, 0), sigmaX=width // 20)
+    normalized = cv2.normalize(blurred, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+    colormap   = cv2.applyColorMap(normalized, cv2.COLORMAP_JET)
+    heatmap_img = cv2.addWeighted(first_frame, 0.4, colormap, 0.6, 0)
+    st.image(cv2.cvtColor(heatmap_img, cv2.COLOR_BGR2RGB), use_container_width=True)
+    st.caption("Heat intensity weighted by object class — red = highest danger concentration")
+else:
+    st.info("No detections to build heatmap from.")
 
 # ── Playback ──────────────────────────────────────────────────────────────────
 st.subheader("Analyzed Video")
