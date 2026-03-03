@@ -105,10 +105,12 @@ if not run:
 detector = DashcamDetector(model_size=model_key, conf=conf_thresh)
 scorer   = DangerScorer(smoothing_window=6)
 
-out_path = src_path.replace(".mp4", "_analyzed.mp4")
-fourcc   = cv2.VideoWriter_fourcc(*"avc1")  # H.264 — required for browser playback
-out_fps  = max(fps / skip_n, 1.0)
-writer   = cv2.VideoWriter(out_path, fourcc, out_fps, (width, height))
+out_path  = src_path.replace(".mp4", "_analyzed.mp4")
+orig_path = src_path.replace(".mp4", "_original_web.mp4")
+fourcc    = cv2.VideoWriter_fourcc(*"avc1")  # H.264 — required for browser playback
+out_fps   = max(fps / skip_n, 1.0)
+writer      = cv2.VideoWriter(out_path,  fourcc, out_fps, (width, height))
+orig_writer = cv2.VideoWriter(orig_path, fourcc, out_fps, (width, height))
 
 progress_bar  = st.progress(0, text="Loading model…")
 preview_slot  = st.empty()
@@ -163,6 +165,7 @@ while True:
         })
     prev_label = label
 
+    orig_writer.write(frame)
     annotate_frame(frame, detections, score, label, color)
     writer.write(frame)
 
@@ -181,6 +184,7 @@ while True:
 
 cap.release()
 writer.release()
+orig_writer.release()
 progress_bar.progress(1.0, text="Done!")
 preview_slot.empty()
 status_slot.empty()
@@ -278,22 +282,17 @@ if events:
 else:
     st.info("No threshold escalations detected — danger stayed at LOW throughout.")
 
-# ── Detection heatmap ────────────────────────────────────────────────────────
-st.subheader("Detection Heatmap")
-if first_frame is not None and heatmap_acc.max() > 0:
-    blurred    = cv2.GaussianBlur(heatmap_acc, (0, 0), sigmaX=width // 20)
-    normalized = cv2.normalize(blurred, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
-    colormap   = cv2.applyColorMap(normalized, cv2.COLORMAP_JET)
-    heatmap_img = cv2.addWeighted(first_frame, 0.4, colormap, 0.6, 0)
-    st.image(cv2.cvtColor(heatmap_img, cv2.COLOR_BGR2RGB), use_container_width=True)
-    st.caption("Heat intensity weighted by object class — red = highest danger concentration")
-else:
-    st.info("No detections to build heatmap from.")
-
-# ── Playback ──────────────────────────────────────────────────────────────────
-st.subheader("Analyzed Video")
-with open(out_path, "rb") as f:
-    st.video(f.read())
+# ── Side-by-side playback ─────────────────────────────────────────────────────
+st.subheader("Side-by-Side Comparison")
+col_orig, col_analyzed = st.columns(2)
+with col_orig:
+    st.caption("Original")
+    with open(orig_path, "rb") as f:
+        st.video(f.read())
+with col_analyzed:
+    st.caption("Analyzed")
+    with open(out_path, "rb") as f:
+        st.video(f.read())
 
 # ── Download ──────────────────────────────────────────────────────────────────
 with open(out_path, "rb") as f:
