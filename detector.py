@@ -19,7 +19,7 @@ class DashcamDetector:
         self.conf = conf
 
     def detect(self, frame) -> list[dict]:
-        results = self.model(frame, conf=self.conf, verbose=False)[0]
+        results = self.model.track(frame, conf=self.conf, persist=True, verbose=False)[0]
         detections = []
         for box in results.boxes:
             cls_id = int(box.cls[0])
@@ -32,6 +32,7 @@ class DashcamDetector:
                     "class_id": cls_id,
                     "class_name": ROAD_CLASSES[cls_id],
                     "confidence": float(box.conf[0]),
+                    "track_id": int(box.id[0]) if box.id is not None else None,
                 }
             )
         return detections
