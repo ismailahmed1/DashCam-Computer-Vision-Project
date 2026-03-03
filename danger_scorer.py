@@ -25,6 +25,7 @@ DANGER_LEVELS = [
 class DangerScorer:
     def __init__(self, smoothing_window: int = 6):
         self._history: deque[float] = deque(maxlen=smoothing_window)
+        self._prev_areas: dict[int, float] = {}  # track_id → previous box area
 
     def score(self, detections: list[dict], frame_w: int, frame_h: int) -> float:
         frame_area = frame_w * frame_h
@@ -37,8 +38,7 @@ class DangerScorer:
             x1, y1, x2, y2 = det["box"]
             box_area = max((x2 - x1) * (y2 - y1), 1)
 
-            # Proximity: fraction of frame covered (cube-rooted so large objects
-            # don't totally dominate, but still strongly weighted)
+            # Proximity: fraction of frame covered
             proximity = (box_area / frame_area) ** 0.5
 
             class_w = CLASS_WEIGHTS.get(det["class_name"], 1.0)
@@ -47,9 +47,18 @@ class DangerScorer:
             cx = (x1 + x2) / 2
             cy = (y1 + y2) / 2
             lateral_w  = 1.6 if cx_min <= cx <= cx_max else 1.0
-            vertical_w = 1.4 if cy > frame_h * 0.35 else 1.0   # lower half = on road
+            vertical_w = 1.4 if cy > frame_h * 0.35 else 1.0
 
-            raw += proximity * class_w * lateral_w * vertical_w * 120
+            # Approach velocity: boost score if box is growing (object closing in)
+            track_id = det.get("track_id")
+            velocity_w = 1.0
+            if track_id is not None and track_id in self._prev_areas:
+                growth = (box_area - self._prev_areas[track_id]) / self._prev_areas[track_id]
+                velocity_w = min(1.0 + max(growth, 0) * 3.0, 2.0)
+            if track_id is not None:
+                self._prev_areas[track_id] = box_area
+
+            raw += proximity * class_w * lateral_w * vertical_w * velocity_w * 120
 
         score = min(raw, 100.0)
         self._history.append(score)
@@ -64,3 +73,4 @@ class DangerScorer:
 
     def reset(self):
         self._history.clear()
+        self._prev_areas.clear()
